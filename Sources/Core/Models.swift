@@ -71,7 +71,6 @@ struct Preset: Identifiable, Codable, Hashable, Sendable {
     var backingWidth: Int?
     var backingHeight: Int?
     var brightness: Double?
-    var hotkeySlot: Int?
     var displayUUID: String?
 
     var summary: String {

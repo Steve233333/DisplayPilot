@@ -64,11 +64,22 @@ final class OverrideFileTests: XCTestCase {
     }
 
     func testPresetCodableRoundTrip() throws {
-        let preset = Preset(name: "写代码", backingWidth: 3456, backingHeight: 2160, brightness: 0.8, hotkeySlot: 0, displayUUID: "U")
+        let preset = Preset(name: "写代码", backingWidth: 3456, backingHeight: 2160, brightness: 0.8, displayUUID: "U")
         let data = try JSONEncoder().encode([preset])
         let decoded = try JSONDecoder().decode([Preset].self, from: data)
         XCTAssertEqual(decoded.first?.name, "写代码")
         XCTAssertEqual(decoded.first?.backingWidth, 3456)
         XCTAssertEqual(decoded.first?.brightness, 0.8)
+        XCTAssertEqual(decoded.first?.displayUUID, "U")
+    }
+
+    /// 旧版本存过带 hotkeySlot 的预设，新版本读到时应该照常解出来（多余字段忽略）。
+    func testLegacyPresetWithHotkeySlotStillDecodes() throws {
+        let legacy = """
+        [{"id":"\(UUID().uuidString)","name":"旧预设","backingWidth":1920,"backingHeight":1200,"brightness":0.6,"hotkeySlot":1,"displayUUID":"U"}]
+        """
+        let decoded = try JSONDecoder().decode([Preset].self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded.first?.name, "旧预设")
+        XCTAssertEqual(decoded.first?.brightness, 0.6)
     }
 }

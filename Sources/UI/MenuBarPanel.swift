@@ -124,19 +124,12 @@ struct MenuBarPanel: View {
                 Text(L10n.t("预设"))
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
-                ForEach(model.orderedPresets.prefix(3)) { preset in
+                ForEach(model.presets.prefix(4)) { preset in
                     Button {
                         model.applyPreset(preset)
                     } label: {
-                        HStack(spacing: 3) {
-                            if let slot = preset.hotkeySlot {
-                                Text("⌥⌘\(slot + 1)")
-                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(preset.name)
-                                .font(.system(size: 10))
-                        }
+                        Text(preset.name)
+                            .font(.system(size: 10))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
@@ -166,7 +159,7 @@ struct MenuBarPanel: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 Spacer()
-                Text("⌥⌘↑/↓ 调亮度")
+                Text("⌥⌘↑/↓ 调亮度 · 预设从菜单里点")
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
             }

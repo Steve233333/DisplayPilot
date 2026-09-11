@@ -168,7 +168,7 @@ struct SettingsView: View {
                     OcticonImage(name: "star", size: 20).foregroundStyle(.tertiary)
                     Text("还没有预设")
                         .font(.system(size: 12, weight: .medium))
-                    Text("在面板的显示器卡片里点 ☆ 存当前状态，或直接用上面的输入框；保存后可在这里改名字、换绑屏、更新参数、排序和指定 ⌥⌘1…3。")
+                    Text("在面板的显示器卡片里点 ☆ 存当前状态，或直接用上面的输入框；保存后可在这里改名字、换绑屏、更新参数、排序。")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -201,19 +201,6 @@ struct SettingsView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: 150)
-
-                Menu {
-                    Button("不绑定快捷键") { model.setHotkeySlot(nil, for: preset) }
-                    Divider()
-                    ForEach(0..<PresetLogic.slotCount, id: \.self) { slot in
-                        Button("⌥⌘\(slot + 1)") { model.setHotkeySlot(slot, for: preset) }
-                    }
-                } label: {
-                    Badge(text: preset.hotkeySlot.map { "⌥⌘\($0 + 1)" } ?? "未绑定", tint: preset.hotkeySlot == nil ? .secondary : .blue)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
 
                 Menu {
                     Button("所有显示器") { model.rebind(preset, to: nil) }
@@ -274,10 +261,9 @@ struct SettingsView: View {
             Divider()
             shortcutRow("⌥⌘↑", "亮度 +5%")
             shortcutRow("⌥⌘↓", "亮度 −5%")
-            ForEach(0..<PresetLogic.slotCount, id: \.self) { slot in
-                let bound = PresetLogic.preset(in: model.presets, forSlot: slot)
-                shortcutRow("⌥⌘\(slot + 1)", bound.map { "应用预设：\($0.name)" } ?? "未绑定（可在「预设」页指定）")
-            }
+            Text("预设故意不占快捷键：从面板底部点选，或到「预设」页管理。")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.top, 8)

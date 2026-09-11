@@ -54,9 +54,9 @@ xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
 
 面板里每块显示器一张卡片：分辨率滑杆（默认只列 HiDPI + 与面板等比例的档位）、亮度滑杆（旁边是 0%～100% 的可用区间）、亮度后端徽标（硬件 DDC / 软件调光 / 软件调光·覆盖层）、平滑缩放状态与一键还原。
 
-| 通用 | 快捷键 | 权限 |
-|---|---|---|
-| <img src="docs/settings-general.png" width="290" alt="通用：开机自启、OSD、档位密度"> | <img src="docs/settings-shortcuts.png" width="290" alt="快捷键：F1/F2 接管与自定快捷键"> | <img src="docs/settings-permissions.png" width="290" alt="权限：辅助功能状态与说明"> |
+| 通用 | 权限 |
+|---|---|
+| <img src="docs/settings-general.png" width="330" alt="通用：开机自启、OSD、档位密度、亮度曲线"> | <img src="docs/settings-permissions.png" width="330" alt="权限：辅助功能状态与说明"> |
 
 ## 功能
 
@@ -64,9 +64,9 @@ xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
 - **软件调光**：伽马表压暗画面，不碰显示器背光，**与 DCR 模式不冲突、不闪**。唤醒、改分辨率、换色彩描述文件后自动重放。
 - **硬件调光（DDC/CI）**：通过 `IOAVService` 写 VCP 0x10；每块屏可独立选择 `自动 / 强制硬件 / 强制软件`，`自动` 每会话只探测一次。
 - **亮度键接管**：拦截 F1/F2（需要辅助功能权限），并显示屏幕底部 OSD。
-- **自定快捷键**：⌥⌘↑/↓ 调亮度、⌥⌘1…3 应用预设（Carbon 热键，不需要任何权限）。
+- **自定快捷键**：⌥⌘↑/↓ 调亮度（Carbon 热键，不需要任何权限）；预设**故意不占全局快捷键**，从面板底部点选。
 - **预设**：一键切换分辨率 + 亮度。
-- **预设管理**：设置里可以重命名、用当前状态更新、换绑显示器、排序、删除，并把预设指定到 ⌥⌘1…3。
+- **预设管理**：设置里可以重命名、用当前状态更新、换绑显示器、排序、删除。
 - **亮度曲线 + 过渡缓动**：线性 / 柔和 / 感知三种响应曲线可选，亮度变化 0.18 秒缓动滑过去，不会硬跳。
 - **安全网**：改动前自动备份原 override 到 `~/Library/Application Support/DisplayPilot/backups/`；面板里有「还原原生」回到系统原始模式表。
 

@@ -121,7 +121,6 @@ final class AppModel {
 
         GlobalHotkeys.shared.onBrightnessUp = { [weak self] in self?.nudgeBrightness(+0.05) }
         GlobalHotkeys.shared.onBrightnessDown = { [weak self] in self?.nudgeBrightness(-0.05) }
-        GlobalHotkeys.shared.onPreset = { [weak self] slot in self?.applyPreset(slot: slot) }
         if settings.customHotkeysEnabled { GlobalHotkeys.shared.start() }
 
         MediaKeyTap.shared.onBrightnessUp = { [weak self] in self?.nudgeBrightness(+0.05) }
@@ -374,7 +373,6 @@ final class AppModel {
             backingWidth: snapshot.currentMode?.backingWidth,
             backingHeight: snapshot.currentMode?.backingHeight,
             brightness: brightness.level(for: snapshot),
-            hotkeySlot: PresetLogic.nextFreeSlot(in: presets),
             displayUUID: snapshot.identity.uuid
         )
         presets.append(preset)
@@ -418,29 +416,9 @@ final class AppModel {
         settings.setPresets(presets)
     }
 
-    /// 指定 / 解除快捷键槽位（同一个槽位只能有一个预设）。
-    func setHotkeySlot(_ slot: Int?, for preset: Preset) {
-        presets = PresetLogic.assigning(slot: slot, to: preset.id, in: presets)
-        settings.setPresets(presets)
-    }
-
     func movePreset(_ preset: Preset, by offset: Int) {
         presets = PresetLogic.moving(id: preset.id, by: offset, in: presets)
         settings.setPresets(presets)
-    }
-
-    /// 按快捷键槽位应用（⌥⌘1…3 走这里）。
-    func applyPreset(slot: Int) {
-        guard let preset = PresetLogic.preset(in: presets, forSlot: slot) else {
-            status = StatusMessage(text: "⌥⌘\(slot + 1) 还没绑定预设", kind: .info)
-            return
-        }
-        applyPreset(preset)
-    }
-
-    /// 面板底部展示用：按槽位排序。
-    var orderedPresets: [Preset] {
-        PresetLogic.displayOrder(presets)
     }
 
     func applyPreset(_ preset: Preset) {
