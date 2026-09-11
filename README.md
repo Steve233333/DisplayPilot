@@ -46,6 +46,14 @@ xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
 
 想自己编译：`brew install xcodegen && make run`。
 
+## 界面
+
+| 菜单栏面板 | 设置 · 显示 |
+|---|---|
+| <img src="docs/panel.png" width="330" alt="菜单栏面板：每块屏的分辨率档位与亮度"> | <img src="docs/settings.png" width="440" alt="设置：每块屏的亮度后端策略"> |
+
+面板里每块显示器一张卡片：分辨率滑杆（默认只列 HiDPI + 与面板等比例的档位）、亮度滑杆（旁边是 0%～100% 的可用区间）、亮度后端徽标（硬件 DDC / 软件调光 / 软件调光·覆盖层）、平滑缩放状态与一键还原。
+
 ## 功能
 
 - **柔性 HiDPI 缩放**：为显示器注入 61 档等距缩放梯（原生宽 16 点一档直到 50%，全部 2× 超采样），写 `/Library/Displays/.../Overrides` 后立刻重枚举，**不需要重启也不用拔线**。内容与盘上一致时不会重复弹管理员密码。
