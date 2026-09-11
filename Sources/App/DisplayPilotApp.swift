@@ -8,7 +8,10 @@ struct DisplayPilotApp: App {
         MenuBarExtra {
             MenuBarPanel()
                 .environment(model)
-                .task { model.start() }
+                .task {
+                    model.start()
+                    model.refreshPermissionNow()
+                }
         } label: {
             Image("device-desktop")
                 .renderingMode(.template)

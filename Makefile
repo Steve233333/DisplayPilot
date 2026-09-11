@@ -1,7 +1,9 @@
 APP_NAME := DisplayPilot
 BUILD_DIR := build
 CONFIG := Debug
-SIGN_IDENTITY := Codex Patched Signing
+# 本机用自制证书签名，保证辅助功能授权不会因为重编译失效；
+# 没有这张证书时自动退回 ad-hoc 签名（别人拿去也能直接编）。
+SIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null | grep -q "Codex Patched Signing" && echo "Codex Patched Signing" || echo "-")
 
 .PHONY: gen build sign run test clean install uninstall logs
 

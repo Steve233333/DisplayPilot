@@ -11,27 +11,51 @@ struct DisplaySnapshot: Identifiable, Hashable {
     let currentMode: ScaledMode?
     let availableModes: [ScaledMode]
     let isMain: Bool
+    /// EDID 报告的原生像素（IOKit DisplayAttributes），虚拟显示器通常没有。
+    var edidNative: CGSize?
 
     var hiDPIModes: [ScaledMode] { availableModes.filter(\.isHiDPI) }
 
-    /// 面板真实像素：取最大的非 HiDPI 模式；拿不到就退回当前模式的 backing。
+    /// 面板真实像素（生成 override 与判断等比例都用它）：
+    /// 优先用 EDID 里的原生时序；虚拟/隔空播放显示器没有 EDID 时用当前模式的 backing，
+    /// 但只在它没被超采样放大过（< 1.5×）时才信。
     var nativeResolution: (width: Int, height: Int) {
-        if let native = availableModes.filter({ !$0.isHiDPI }).max(by: {
-            $0.backingWidth * $0.backingHeight < $1.backingWidth * $1.backingHeight
-        }) {
-            return (native.backingWidth, native.backingHeight)
+        let largestOneToOne = availableModes
+            .filter { !$0.isHiDPI }
+            .max { $0.backingWidth * $0.backingHeight < $1.backingWidth * $1.backingHeight }
+
+        if let edid = edidNative, edid.width > 0, edid.height > 0 {
+            return (Int(edid.width), Int(edid.height))
+        }
+        if let current = currentMode, let reference = largestOneToOne {
+            let currentArea = Double(current.backingWidth * current.backingHeight)
+            let referenceArea = Double(reference.backingWidth * reference.backingHeight)
+            if currentArea <= referenceArea * 2.25 {
+                return (current.backingWidth, current.backingHeight)
+            }
+        }
+        if let reference = largestOneToOne {
+            return (reference.backingWidth, reference.backingHeight)
         }
         if let mode = currentMode { return (mode.backingWidth, mode.backingHeight) }
         return (1920, 1080)
     }
 
-    /// 用来做滑杆的档位：优先 HiDPI 梯，附带原生 1× 档。
-    var scalingChoices: [ScaledMode] {
+    /// 做滑杆用的档位：默认只留 **HiDPI + 与面板等比例** 的档位，
+    /// 这样既不会选到模糊的 1×，也不会选到留黑边的 4:3/16:9 档位。
+    func scalingChoices(hidpiOnly: Bool = true, aspectTolerant: Bool = true) -> [ScaledMode] {
+        let native = nativeResolution
+        let nativeAspect = Double(native.width) / Double(native.height)
         var seen = Set<String>()
         var result: [ScaledMode] = []
         for mode in availableModes.sorted(by: {
             $0.logicalWidth * $0.logicalHeight > $1.logicalWidth * $1.logicalHeight
         }) where mode.refresh >= 59.0 {
+            if hidpiOnly, !mode.isHiDPI { continue }
+            if aspectTolerant, mode.backingHeight > 0 {
+                let aspect = Double(mode.backingWidth) / Double(mode.backingHeight)
+                if abs(aspect - nativeAspect) / nativeAspect > 0.02 { continue }
+            }
             let key = "\(mode.backingWidth)x\(mode.backingHeight)-\(mode.logicalWidth)x\(mode.logicalHeight)"
             if seen.insert(key).inserted { result.append(mode) }
         }
@@ -68,26 +92,56 @@ final class DisplayManager {
     }
 
     func snapshots() -> [DisplaySnapshot] {
-        let main = CGMainDisplayID()
-        return activeDisplayIDs().map { id in
-            DisplaySnapshot(
-                displayID: id,
-                identity: identity(for: id),
-                currentMode: currentMode(for: id),
-                availableModes: modes(for: id),
-                isMain: id == main
-            )
-        }
+        activeDisplayIDs().map { snapshot(for: $0) }
     }
 
     func snapshot(for id: CGDirectDisplayID) -> DisplaySnapshot {
-        DisplaySnapshot(
+        var snapshot = DisplaySnapshot(
             displayID: id,
             identity: identity(for: id),
             currentMode: currentMode(for: id),
             availableModes: modes(for: id),
             isMain: id == CGMainDisplayID()
         )
+        snapshot.edidNative = nativeFormatResolution(for: id)
+        return snapshot
+    }
+
+    /// 从 IOKit 的 DisplayAttributes 里读 EDID 原生时序（NativeFormat*）。
+    private func nativeFormatResolution(for id: CGDirectDisplayID) -> CGSize? {
+        let wantVendor = UInt32(CGDisplayVendorNumber(id))
+        let wantProduct = UInt32(CGDisplayModelNumber(id))
+
+        let root = IORegistryGetRootEntry(kIOMainPortDefault)
+        guard root != IO_OBJECT_NULL else { return nil }
+        defer { IOObjectRelease(root) }
+
+        var iterator: io_iterator_t = 0
+        guard IORegistryEntryCreateIterator(
+            root, kIOServicePlane, IOOptionBits(kIORegistryIterateRecursively), &iterator
+        ) == KERN_SUCCESS else { return nil }
+        defer { IOObjectRelease(iterator) }
+
+        var entry = IOIteratorNext(iterator)
+        while entry != IO_OBJECT_NULL {
+            defer {
+                IOObjectRelease(entry)
+                entry = IOIteratorNext(iterator)
+            }
+            guard let attributes = IORegistryEntryCreateCFProperty(
+                entry, "DisplayAttributes" as CFString, kCFAllocatorDefault, 0
+            )?.takeRetainedValue() as? [String: Any],
+                  let width = attributes["NativeFormatHorizontalPixels"] as? Int,
+                  let height = attributes["NativeFormatVerticalPixels"] as? Int,
+                  let product = attributes["ProductAttributes"] as? [String: Any]
+            else { continue }
+
+            let vendorID = (product["LegacyManufacturerID"] as? UInt32) ?? (product["LegacyManufacturerID"] as? Int).map { UInt32($0) }
+            let productID = (product["ProductID"] as? UInt32) ?? (product["ProductID"] as? Int).map { UInt32($0) }
+            guard vendorID == wantVendor, productID == wantProduct else { continue }
+            return CGSize(width: width, height: height)
+        }
+        return nil
     }
 
     func displayID(forUUID uuid: String) -> CGDirectDisplayID? {

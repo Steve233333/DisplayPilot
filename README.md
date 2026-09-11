@@ -54,6 +54,22 @@ make stop     # 退出
 - 软件调光走伽马表，会影响截图/录屏的观感（和 BetterDisplay 的软件调光同理）。
 - 硬件调光在部分显示器的 DCR 模式下会与自动背光打架（本机这台屏已预置成强制软件调光）。
 
+## 分享给别人用（重要）
+
+这个 App 的自用版**没有做代码签名公证**，别人直接拷 .app 会被 Gatekeeper 拦。三种可行姿势：
+
+1. **让朋友自己编译**（最省事）：装 Xcode + `brew install xcodegen`，`git clone` 后 `make run`。
+   `Makefile` 会自动挑签名证书：本机有自制证书就用它，没有就退回 ad-hoc 签名。
+2. **做成正式发布**：需要 Apple 开发者账号（$99/年），用 Developer ID 签名 + 公证；私有 API 决定了它不能上架 App Store。
+3. **只是自己几台机器用**：把自制证书导出成 .p12，在目标机器导入后用同一个证书签名，辅助功能授权才不会每次重编译失效。
+
+朋友第一次打开需要知道三件事：
+
+- 屏幕录制/辅助功能这些权限是**每台机器单独授权**的；F1/F2 亮度键要勾「辅助功能」，不给也能用 ⌥⌘↑/↓。
+- 平滑缩放要写 `/Library/Displays/.../Overrides`，会弹一次管理员密码；写之前会自动备份原文件。
+- 显示器差异很大：DDC 有的显示器要特殊命令、有的 KVM/扩展坞不转发 DDC，识别不到就会自动退回软件调光（面板里也能手动切）。
+- 「已知机型怪癖表」在 `Sources/Core/SettingsStore.swift` 的 `knownQuirks`，命中 vendor+product 才会生效；遇到新的"DDC 会闪"的显示器，往里加一行即可。
+
 ## 第三方
 
 - 图标：[GitHub Octicons](https://github.com/primer/octicons)（MIT）

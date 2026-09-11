@@ -26,6 +26,8 @@ final class AppModel {
     var mediaKeysEnabled: Bool
     var osdEnabled: Bool
     var ladderDensity: LadderDensity
+    var hidpiOnlyChoices: Bool
+    private var permissionTimer: Timer?
 
     func setMediaKeysEnabled(_ enabled: Bool) {
         mediaKeysEnabled = enabled
@@ -43,6 +45,11 @@ final class AppModel {
         settings.ladderDensity = density
     }
 
+    func setHidpiOnly(_ enabled: Bool) {
+        hidpiOnlyChoices = enabled
+        settings.hidpiOnlyChoices = enabled
+    }
+
     // MARK: - 依赖
 
     private let manager = DisplayManager.shared
@@ -56,6 +63,7 @@ final class AppModel {
         mediaKeysEnabled = settings.mediaKeysEnabled
         osdEnabled = settings.osdEnabled
         ladderDensity = settings.ladderDensity
+        hidpiOnlyChoices = settings.hidpiOnlyChoices
         presets = settings.presets()
     }
 
@@ -79,6 +87,7 @@ final class AppModel {
         MediaKeyTap.shared.onBrightnessUp = { [weak self] in self?.nudgeBrightness(+0.05) }
         MediaKeyTap.shared.onBrightnessDown = { [weak self] in self?.nudgeBrightness(-0.05) }
         applyMediaKeyState()
+        startPermissionPolling()
 
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -109,6 +118,30 @@ final class AppModel {
         } else {
             MediaKeyTap.shared.stop()
         }
+    }
+
+    /// 系统设置的辅助功能开关是随时可变的，App 必须自己轮询：
+    /// 授权后立刻把事件 tap 装上，并撤掉那条橙色横幅。
+    private func startPermissionPolling() {
+        permissionTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshPermissionState() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionTimer = timer
+    }
+
+    func refreshPermissionState() {
+        let granted = MediaKeyTap.hasAccessibilityPermission
+        let changed = granted != hasAccessibilityPermission
+        hasAccessibilityPermission = granted
+        guard granted, mediaKeysEnabled, !MediaKeyTap.shared.isRunning else { return }
+        MediaKeyTap.shared.start()
+        if changed { status = StatusMessage(text: "已获得辅助功能权限，F1/F2 亮度键已接管", kind: .success) }
+    }
+
+    func refreshPermissionNow() {
+        refreshPermissionState()
     }
 
     // MARK: - 亮度
@@ -156,12 +189,25 @@ final class AppModel {
     /// 写入 override 并让系统立刻重新识别（不需要重启）。
     func installScalingLadder(for snapshot: DisplaySnapshot) {
         guard !isBusy else { return }
+        guard !snapshot.identity.isBuiltin else {
+            status = StatusMessage(text: "内置屏幕不支持自定义缩放档位（macOS 会忽略它的 override）", kind: .error)
+            return
+        }
+        guard snapshot.identity.vendorID != 0, snapshot.identity.productID != 0 else {
+            status = StatusMessage(text: "这块显示器没有可用的 vendor/product，无法写 override", kind: .error)
+            return
+        }
         isBusy = true
         status = StatusMessage(text: L10n.t("正在写入系统配置…"), kind: .info)
 
         let identity = snapshot.identity
         let native = manager.panelNativeResolution(for: snapshot.displayID)
         let density = ladderDensity
+        let expectedLadder = density == .full
+            ? OverrideFile.ladder(nativeWidth: native.width, nativeHeight: native.height)
+            : OverrideFile.compactLadder(nativeWidth: native.width, nativeHeight: native.height)
+        let expectedBackings = Set(expectedLadder.map { "\($0.backingWidth)x\($0.backingHeight)" })
+        let displayID = snapshot.displayID
 
         Task.detached(priority: .userInitiated) { [installer] in
             var message = StatusMessage(text: L10n.t("档位已就绪"), kind: .success)
@@ -170,6 +216,17 @@ final class AppModel {
                 try installer.install(file)
                 DisplayReprobe.request(identity: identity)
                 try? await Task.sleep(nanoseconds: 900_000_000)
+
+                // 校验：系统真的把新档位列出来了吗？（某些显示器/KVM 需要拔插线）
+                let observed = await MainActor.run {
+                    Set(DisplayManager.shared.modes(for: displayID).map { "\($0.backingWidth)x\($0.backingHeight)" })
+                }
+                if expectedBackings.isDisjoint(with: observed) {
+                    message = StatusMessage(
+                        text: "已写入配置，但系统还没列出新档位：请拔插一次显示器连线，或重启后再试",
+                        kind: .error
+                    )
+                }
             } catch {
                 message = StatusMessage(text: error.localizedDescription, kind: .error)
             }
@@ -242,7 +299,8 @@ final class AppModel {
         for snapshot in displays {
             if let uuid = preset.displayUUID, uuid != snapshot.identity.uuid { continue }
             if let width = preset.backingWidth, let height = preset.backingHeight {
-                if let mode = snapshot.scalingChoices.first(where: { $0.backingWidth == width && $0.backingHeight == height }) {
+                let choices = snapshot.scalingChoices(hidpiOnly: hidpiOnlyChoices)
+                if let mode = choices.first(where: { $0.backingWidth == width && $0.backingHeight == height }) {
                     manager.setMode(mode, on: snapshot.displayID)
                 }
             }

@@ -64,7 +64,7 @@ final class BrightnessController {
         case .hardware:
             writeHardware(clamped, for: snapshot)
         case .software:
-            SoftwareBrightness.shared.set(max(clamped, 0.05), on: snapshot.displayID)
+            SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: clamped), on: snapshot.displayID)
         }
 
         if showOSD, settings.osdEnabled {
@@ -106,7 +106,7 @@ final class BrightnessController {
             }
             // 软件调光在屏幕参数变化后需要重放。
             if backend(for: snapshot) == .software, let level = levels[uuid] {
-                SoftwareBrightness.shared.set(max(level, 0.05), on: snapshot.displayID)
+                SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: level), on: snapshot.displayID)
             }
         }
         let alive = Set(snapshots.map(\.identity.uuid))
@@ -173,7 +173,7 @@ final class BrightnessController {
                 Task { @MainActor in
                     self.log.notice("DDC write failed on \(uuid, privacy: .public); falling back to software for this session")
                     self.backends[uuid] = .software
-                    SoftwareBrightness.shared.set(max(level, 0.05), on: snapshot.displayID)
+                    SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: level), on: snapshot.displayID)
                 }
             }
         }

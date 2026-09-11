@@ -10,7 +10,9 @@ struct DisplayCardView: View {
     @State private var presetName = ""
     @State private var showingPresetField = false
 
-    private var choices: [ScaledMode] { snapshot.scalingChoices }
+    private var choices: [ScaledMode] {
+        snapshot.scalingChoices(hidpiOnly: model.hidpiOnlyChoices)
+    }
 
     private var currentIndex: Int {
         guard let current = snapshot.currentMode else { return 0 }
@@ -66,9 +68,21 @@ struct DisplayCardView: View {
                 Spacer()
                 Text((hoveredMode ?? snapshot.currentMode)?.label ?? "—")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                if let mode = hoveredMode ?? snapshot.currentMode, mode.isHiDPI {
-                    Badge(text: "HiDPI", tint: .purple)
+                Menu {
+                    Toggle("只显示 HiDPI 档位", isOn: Binding(
+                        get: { model.hidpiOnlyChoices },
+                        set: { model.setHidpiOnly($0) }
+                    ))
+                    Text("只列出与面板等比例的档位：既不会模糊，也不会留黑边")
+                } label: {
+                    Badge(
+                        text: model.hidpiOnlyChoices ? "HiDPI" : "全部档位",
+                        tint: model.hidpiOnlyChoices ? .purple : .secondary
+                    )
                 }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
 
             if choices.count > 1 {
@@ -164,7 +178,10 @@ struct DisplayCardView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.mini)
-            .disabled(model.isBusy)
+            .disabled(model.isBusy || snapshot.identity.isBuiltin)
+            .help(snapshot.identity.isBuiltin
+                  ? "内置屏幕不支持自定义缩放档位"
+                  : "写入 61 档等比例 HiDPI 档位（需要一次管理员密码）")
 
             Button {
                 model.reprobe(snapshot)

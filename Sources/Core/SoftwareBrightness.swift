@@ -8,6 +8,24 @@ import os
 final class SoftwareBrightness {
     static let shared = SoftwareBrightness()
 
+    /// 伽马表 API 运行时解析：万一将来 macOS 删掉这个符号（BetterDisplay 2.2.6
+    /// 就是这么被系统更新干掉的），App 依然能启动，只是软件调光不可用。
+    private typealias SetTableFn = @convention(c) (
+        CGDirectDisplayID, UInt32,
+        UnsafePointer<CGGammaValue>, UnsafePointer<CGGammaValue>, UnsafePointer<CGGammaValue>
+    ) -> Int32
+
+    private static let coreGraphics: UnsafeMutableRawPointer? =
+        dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW)
+
+    private static let setTableFn: SetTableFn? = {
+        guard let coreGraphics, let symbol = dlsym(coreGraphics, "CGSetDisplayTransferByTable") else { return nil }
+        return unsafeBitCast(symbol, to: SetTableFn.self)
+    }()
+
+    /// 这台机器上还能不能用伽马表调光。
+    static var isAvailable: Bool { setTableFn != nil }
+
     private let log = Logger(subsystem: "com.steve233.DisplayPilot", category: "software-brightness")
     private var factors: [CGDirectDisplayID: Double] = [:]
     private let lock = NSLock()
@@ -16,6 +34,15 @@ final class SoftwareBrightness {
     private init() {}
 
     // MARK: - 对外
+
+    /// 把"感知亮度"换算成伽马系数。
+    /// 伽马表是线性压亮度，而人眼对亮度的感知接近 sRGB（≈ 2.2 次方），
+    /// 直接用百分比压会让 60% 看起来像 80% —— 这里做一次反向补偿，
+    /// 让滑杆上的百分比和眼睛看到的亮度对得上。
+    static func perceptualFactor(for level: Double) -> Double {
+        let clamped = min(max(level, 0.0), 1.0)
+        return pow(clamped, 2.2)
+    }
 
     func factor(for displayID: CGDirectDisplayID) -> Double {
         lock.lock(); defer { lock.unlock() }
@@ -71,15 +98,22 @@ final class SoftwareBrightness {
     // MARK: - 伽马表
 
     private func apply(_ factor: Double, to displayID: CGDirectDisplayID) {
+        guard let setTable = Self.setTableFn else {
+            log.error("CGSetDisplayTransferByTable 在当前系统上不可用，软件调光已跳过")
+            return
+        }
         let capacity = 256
         var table = [CGGammaValue](repeating: 0, count: capacity)
         for index in 0..<capacity {
             let input = CGGammaValue(index) / CGGammaValue(capacity - 1)
             table[index] = CGGammaValue(min(1.0, max(0.0, Double(input) * factor)))
         }
-        let result = CGSetDisplayTransferByTable(displayID, UInt32(capacity), &table, &table, &table)
-        if result != .success {
-            log.debug("gamma write failed for display \(displayID): \(Int(result.rawValue))")
+        let result = table.withUnsafeBufferPointer { buffer -> Int32 in
+            guard let base = buffer.baseAddress else { return -1 }
+            return setTable(displayID, UInt32(capacity), base, base, base)
+        }
+        if result != 0 {
+            log.debug("gamma write failed for display \(displayID): \(result)")
         }
     }
 }
