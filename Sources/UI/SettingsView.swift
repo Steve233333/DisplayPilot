@@ -123,9 +123,11 @@ struct SettingsView: View {
     private var permissionsTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                OcticonImage(name: model.hasAccessibilityPermission ? "check-circle" : "x-circle", size: 14)
-                    .foregroundStyle(model.hasAccessibilityPermission ? .green : .red)
-                Text(model.hasAccessibilityPermission ? L10n.t("权限已授予") : L10n.t("需要辅助功能权限"))
+                OcticonImage(name: model.mediaKeysActive ? "check-circle" : "x-circle", size: 14)
+                    .foregroundStyle(model.mediaKeysActive ? .green : .red)
+                Text(model.mediaKeysActive
+                     ? "F1/F2 已接管（事件 tap 运行中）"
+                     : (model.hasAccessibilityPermission ? "权限已授予，正在重试接管…" : L10n.t("需要辅助功能权限")))
                     .font(.system(size: 12, weight: .medium))
             }
             Text("辅助功能权限只用于接管 F1/F2 亮度键。调整亮度和分辨率本身不需要任何权限；写入平滑缩放档位需要一次管理员密码（系统弹窗）。")

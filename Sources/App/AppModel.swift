@@ -28,6 +28,10 @@ final class AppModel {
     var status: StatusMessage?
     var isBusy = false
     var hasAccessibilityPermission = MediaKeyTap.hasAccessibilityPermission
+    /// 事件 tap 是否真的装上了 —— 这才代表 F1/F2 接管生效。
+    /// macOS 的 AXIsProcessTrusted() 对自制签名/重编译过的 App 经常误报，
+    /// 所以「能不能建出 tap」才是唯一可信的判据。
+    var mediaKeysActive = false
     var launchAtLogin = LaunchAtLogin.isEnabled
     /// 可观察的镜像状态：SwiftUI 只能观察 AppModel 自己的属性，
     /// 引擎里的字典（BrightnessController）改了它不知道 —— 之前滑块和数字
@@ -156,6 +160,8 @@ final class AppModel {
         } else {
             MediaKeyTap.shared.stop()
         }
+        mediaKeysActive = MediaKeyTap.shared.isRunning
+        log.notice("media keys: enabled=\(self.mediaKeysEnabled, privacy: .public) tap=\(self.mediaKeysActive, privacy: .public) axTrusted=\(MediaKeyTap.hasAccessibilityPermission, privacy: .public)")
     }
 
     /// 系统设置的辅助功能开关是随时可变的，App 必须自己轮询：
@@ -170,12 +176,17 @@ final class AppModel {
     }
 
     func refreshPermissionState() {
-        let granted = MediaKeyTap.hasAccessibilityPermission
-        let changed = granted != hasAccessibilityPermission
-        hasAccessibilityPermission = granted
-        guard granted, mediaKeysEnabled, !MediaKeyTap.shared.isRunning else { return }
-        MediaKeyTap.shared.start()
-        if changed { status = StatusMessage(text: "已获得辅助功能权限，F1/F2 亮度键已接管", kind: .success) }
+        let wasActive = mediaKeysActive
+        // 只要 tap 没装上就重试一次（授权后无需重启 App 就能接管）。
+        if mediaKeysEnabled, !MediaKeyTap.shared.isRunning {
+            MediaKeyTap.shared.start()
+        }
+        mediaKeysActive = MediaKeyTap.shared.isRunning
+        hasAccessibilityPermission = MediaKeyTap.hasAccessibilityPermission || mediaKeysActive
+        if mediaKeysActive, !wasActive {
+            status = StatusMessage(text: "F1/F2 亮度键已接管", kind: .success)
+            log.notice("media key tap armed (axTrusted=\(MediaKeyTap.hasAccessibilityPermission, privacy: .public))")
+        }
     }
 
     func refreshPermissionNow() {

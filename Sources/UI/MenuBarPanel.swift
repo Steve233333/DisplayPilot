@@ -10,7 +10,7 @@ struct MenuBarPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            if model.mediaKeysEnabled, !model.hasAccessibilityPermission {
+            if model.mediaKeysEnabled, !model.mediaKeysActive {
                 permissionBanner
             }
 
