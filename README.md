@@ -16,11 +16,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.1.dmg">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.2.dmg">
     <img src="https://img.shields.io/badge/下载-DMG%20安装包-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="DMG">
   </a>
   &nbsp;
-  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.1.zip">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.2.zip">
     <img src="https://img.shields.io/badge/下载-ZIP%20免安装-34C759?style=for-the-badge&logo=apple&logoColor=white" alt="ZIP">
   </a>
 </p>
