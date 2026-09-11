@@ -16,11 +16,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.0.dmg">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.1.dmg">
     <img src="https://img.shields.io/badge/下载-DMG%20安装包-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="DMG">
   </a>
   &nbsp;
-  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.0.zip">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.1.zip">
     <img src="https://img.shields.io/badge/下载-ZIP%20免安装-34C759?style=for-the-badge&logo=apple&logoColor=white" alt="ZIP">
   </a>
 </p>
@@ -66,6 +66,8 @@ xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
 - **亮度键接管**：拦截 F1/F2（需要辅助功能权限），并显示屏幕底部 OSD。
 - **自定快捷键**：⌥⌘↑/↓ 调亮度、⌥⌘1…3 应用预设（Carbon 热键，不需要任何权限）。
 - **预设**：一键切换分辨率 + 亮度。
+- **预设管理**：设置里可以重命名、用当前状态更新、换绑显示器、排序、删除，并把预设指定到 ⌥⌘1…3。
+- **亮度曲线 + 过渡缓动**：线性 / 柔和 / 感知三种响应曲线可选，亮度变化 0.18 秒缓动滑过去，不会硬跳。
 - **安全网**：改动前自动备份原 override 到 `~/Library/Application Support/DisplayPilot/backups/`；面板里有「还原原生」回到系统原始模式表。
 
 ## 环境要求
