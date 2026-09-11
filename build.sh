@@ -30,7 +30,7 @@ IDENTITY="-"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "Codex Patched Signing"; then
   IDENTITY="Codex Patched Signing"
 fi
-echo "==> 签名（$IDENTITY）"
+echo "==> 签名: $IDENTITY"
 codesign --force --deep --sign "$IDENTITY" "$APP"
 
 echo "==> 打包"
