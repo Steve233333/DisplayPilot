@@ -1,8 +1,50 @@
 # DisplayPilot
 
-自用的 macOS 菜单栏显示器工具：**柔性 HiDPI 缩放** + **软件/硬件亮度**，界面用 GitHub Octicons 图标，中英双语。
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="DisplayPilot 图标">
+</p>
+
+> macOS 菜单栏显示器工具：**柔性 HiDPI 缩放** + **软件/硬件亮度**，界面用 GitHub Octicons 图标，中英双语。
+
+<p align="center">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Steve233333/DisplayPilot?label=最新版本&color=0A84FF" alt="release">
+  </a>
+  <img src="https://img.shields.io/badge/macOS-26.0+-black" alt="macOS 26+">
+  <img src="https://img.shields.io/badge/Apple%20Silicon-arm64-0A84FF" alt="Apple Silicon">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.0.dmg">
+    <img src="https://img.shields.io/badge/下载-DMG%20安装包-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="DMG">
+  </a>
+  &nbsp;
+  <a href="https://github.com/Steve233333/DisplayPilot/releases/latest/download/DisplayPilot-1.0.zip">
+    <img src="https://img.shields.io/badge/下载-ZIP%20免安装-34C759?style=for-the-badge&logo=apple&logoColor=white" alt="ZIP">
+  </a>
+</p>
+
+<p align="center">
+  <b>下载 → 拖入「应用程序」→ 右键打开一次 → 授权辅助功能（可选）</b><br/>
+  <sub>Apple Silicon · macOS 26+ · 未公证，首次打开需右键「打开」</sub>
+</p>
 
 替代 BetterDisplay / Crisp 在本机的用途，但更轻：没有虚拟屏、PiP、串流那些用不上的功能，也没有授权码。
+
+## 安装
+
+**DMG 推荐**：下载后打开，把 `DisplayPilot.app` 拖进「应用程序」。
+
+**ZIP 免安装**：解压后直接运行。
+
+首次打开如果提示「未验证的开发者」（这个 App 没有做 Apple 公证），**右键应用 → 打开** 即可；或者执行：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
+```
+
+想自己编译：`brew install xcodegen && make run`。
 
 ## 功能
 
