@@ -17,6 +17,9 @@ final class BrightnessController {
 
     private var ddcMax: [String: UInt16] = [:]
     private var ddcProbed: Set<String> = []
+    /// 最近一次真正下发到后端的输出值（缓动从这里出发）。
+    private var appliedOutput: [String: Double] = [:]
+    private var ramps: [String: Task<Void, Never>] = [:]
     private let ddcQueue = DispatchQueue(label: "com.steve233.DisplayPilot.ddc", qos: .userInitiated)
 
     private init() {}
@@ -71,12 +74,7 @@ final class BrightnessController {
         settings.setLevel(clamped, for: uuid)
 
         let output = limits(for: snapshot).output(for: clamped)
-        switch backend(for: snapshot) {
-        case .hardware:
-            writeHardware(output, for: snapshot)
-        case .software:
-            setSoftwareLevel(output, for: snapshot)
-        }
+        applyOutput(output, for: snapshot, animated: !(delta != nil))
 
         if showOSD, settings.osdEnabled {
             OSDController.shared.show(
@@ -103,6 +101,51 @@ final class BrightnessController {
             return match
         }
         return snapshots.first(where: \.isMain) ?? snapshots.first
+    }
+
+    // MARK: - 下发（带缓动）
+
+    /// 把目标输出值下发到后端；开启缓动时在 0.18 秒内滑过去，而不是硬跳。
+    private func applyOutput(_ output: Double, for snapshot: DisplaySnapshot, animated: Bool) {
+        let uuid = snapshot.identity.uuid
+        ramps[uuid]?.cancel()
+
+        guard animated,
+              settings.smoothBrightnessTransitions,
+              let previous = appliedOutput[uuid],
+              abs(previous - output) > 0.004
+        else {
+            appliedOutput[uuid] = output
+            dispatch(output, for: snapshot)
+            return
+        }
+
+        // DDC 每次写入要 40ms 以上，步数太多会拖沓，这里给硬件少几步。
+        let steps = backend(for: snapshot) == .software ? 12 : 4
+        let interval = UInt64(180_000_000 / steps)
+        ramps[uuid] = Task { [weak self] in
+            guard let self else { return }
+            for step in 1...steps {
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: interval)
+                let progress = BrightnessCurve.eased(Double(step) / Double(steps))
+                let value = previous + (output - previous) * progress
+                await MainActor.run {
+                    self.appliedOutput[uuid] = value
+                    self.dispatch(value, for: snapshot)
+                }
+            }
+            await MainActor.run { self.appliedOutput[uuid] = output }
+        }
+    }
+
+    private func dispatch(_ output: Double, for snapshot: DisplaySnapshot) {
+        switch backend(for: snapshot) {
+        case .hardware:
+            writeHardware(output, for: snapshot)
+        case .software:
+            setSoftwareLevel(output, for: snapshot)
+        }
     }
 
     /// 显示器变化后重新校准（重连、换后端、首次运行）。
@@ -159,6 +202,7 @@ final class BrightnessController {
                 ddcMax[uuid] = reading.max
                 // 首次探测到硬件亮度时，把当前值同步进来（只读这一次）。
                 levels[uuid] = limits(for: snapshot).sliderValue(for: Double(reading.current) / Double(reading.max))
+                appliedOutput[uuid] = Double(reading.current) / Double(reading.max)
                 return .hardware
             }
             log.notice("display \(uuid, privacy: .public): DDC unavailable, using software dimming")
@@ -204,8 +248,9 @@ final class BrightnessController {
     /// 软件调光落地：无线/虚拟屏（没有 EDID 的）走覆盖层，
     /// 普通屏走伽马表 —— 隔空播放的伽马写入是「成功但无效」。
     private func setSoftwareLevel(_ output: Double, for snapshot: DisplaySnapshot) {
+        let factor = settings.curve.factor(for: output)
         SoftwareBrightness.shared.set(
-            SoftwareBrightness.perceptualFactor(for: output),
+            factor,
             on: snapshot.displayID,
             preferOverlay: snapshot.prefersOverlayDimming
         )

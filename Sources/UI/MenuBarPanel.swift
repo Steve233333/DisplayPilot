@@ -124,22 +124,51 @@ struct MenuBarPanel: View {
                 Text(L10n.t("预设"))
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
-                ForEach(Array(model.presets.prefix(3).enumerated()), id: \.element.id) { index, preset in
-                    Button(preset.name) {
+                ForEach(model.orderedPresets.prefix(3)) { preset in
+                    Button {
                         model.applyPreset(preset)
+                    } label: {
+                        HStack(spacing: 3) {
+                            if let slot = preset.hotkeySlot {
+                                Text("⌥⌘\(slot + 1)")
+                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(preset.name)
+                                .font(.system(size: 10))
+                        }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
-                    .help("\(preset.summary) · ⌥⌘\(index + 1)")
+                    .help("\(preset.summary)")
                     .contextMenu {
-                        Button(L10n.t("删除")) { model.deletePreset(preset) }
+                        Button("应用") { model.applyPreset(preset) }
+                        Button("用当前状态更新") { model.updatePresetWithCurrent(preset) }
+                        Divider()
+                        Button("删除", role: .destructive) { model.deletePreset(preset) }
                     }
                 }
                 if model.presets.isEmpty {
-                    Text("⌥⌘↑/↓ 调亮度 · 卡片里可存预设")
+                    Text("卡片里点 ☆ 存预设")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
+            }
+            HStack(spacing: 6) {
+                Button {
+                    model.settingsTab = .presets
+                    NSApp.activate(ignoringOtherApps: true)
+                    openSettings()
+                } label: {
+                    Label("管理预设…", systemImage: "slider.horizontal.3")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                Spacer()
+                Text("⌥⌘↑/↓ 调亮度")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
             }
         }
     }

@@ -18,6 +18,11 @@ enum ScalingStatus: Equatable {
     case unsupported(String)
 }
 
+/// 设置窗口的标签页（面板里的「管理预设…」会跳到对应页）。
+enum SettingsTab: String, Hashable, CaseIterable {
+    case general, displays, presets, shortcuts, permissions, about
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -40,11 +45,14 @@ final class AppModel {
     var backends: [String: BrightnessBackend] = [:]
     var limits: [String: BrightnessLimits] = [:]
     var scalingStatuses: [String: ScalingStatus] = [:]
+    var settingsTab: SettingsTab = .general
 
     var mediaKeysEnabled: Bool
     var osdEnabled: Bool
     var ladderDensity: LadderDensity
     var hidpiOnlyChoices: Bool
+    var brightnessCurve: BrightnessCurve
+    var smoothBrightnessTransitions: Bool
     private var permissionTimer: Timer?
 
     func setMediaKeysEnabled(_ enabled: Bool) {
@@ -68,6 +76,18 @@ final class AppModel {
         settings.hidpiOnlyChoices = enabled
     }
 
+    func setBrightnessCurve(_ curve: BrightnessCurve) {
+        brightnessCurve = curve
+        settings.curve = curve
+        // 曲线变了立刻按当前滑杆位置重放一次，方便直接听/看效果。
+        for snapshot in displays { brightness.setLevel(brightness.level(for: snapshot), for: snapshot, showOSD: false) }
+    }
+
+    func setSmoothBrightnessTransitions(_ enabled: Bool) {
+        smoothBrightnessTransitions = enabled
+        settings.smoothBrightnessTransitions = enabled
+    }
+
     // MARK: - 依赖
 
     private let manager = DisplayManager.shared
@@ -82,6 +102,8 @@ final class AppModel {
         osdEnabled = settings.osdEnabled
         ladderDensity = settings.ladderDensity
         hidpiOnlyChoices = settings.hidpiOnlyChoices
+        brightnessCurve = settings.curve
+        smoothBrightnessTransitions = settings.smoothBrightnessTransitions
         presets = settings.presets()
     }
 
@@ -99,7 +121,7 @@ final class AppModel {
 
         GlobalHotkeys.shared.onBrightnessUp = { [weak self] in self?.nudgeBrightness(+0.05) }
         GlobalHotkeys.shared.onBrightnessDown = { [weak self] in self?.nudgeBrightness(-0.05) }
-        GlobalHotkeys.shared.onPreset = { [weak self] index in self?.applyPreset(at: index) }
+        GlobalHotkeys.shared.onPreset = { [weak self] slot in self?.applyPreset(slot: slot) }
         if settings.customHotkeysEnabled { GlobalHotkeys.shared.start() }
 
         MediaKeyTap.shared.onBrightnessUp = { [weak self] in self?.nudgeBrightness(+0.05) }
@@ -345,13 +367,14 @@ final class AppModel {
 
     // MARK: - 预设
 
+    /// 保存当前状态为新预设：分辨率 + 亮度 + 绑定这块显示器。
     func savePreset(named name: String, from snapshot: DisplaySnapshot) {
         let preset = Preset(
             name: name,
             backingWidth: snapshot.currentMode?.backingWidth,
             backingHeight: snapshot.currentMode?.backingHeight,
             brightness: brightness.level(for: snapshot),
-            hotkeySlot: presets.count < 3 ? presets.count : nil,
+            hotkeySlot: PresetLogic.nextFreeSlot(in: presets),
             displayUUID: snapshot.identity.uuid
         )
         presets.append(preset)
@@ -362,21 +385,81 @@ final class AppModel {
     func deletePreset(_ preset: Preset) {
         presets.removeAll { $0.id == preset.id }
         settings.setPresets(presets)
+        status = StatusMessage(text: "已删除预设 \(preset.name)", kind: .success)
     }
 
-    func applyPreset(at index: Int) {
-        guard index >= 0, index < presets.count else { return }
-        applyPreset(presets[index])
+    func renamePreset(_ preset: Preset, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = presets.firstIndex(where: { $0.id == preset.id }) else { return }
+        presets[index].name = trimmed
+        settings.setPresets(presets)
+    }
+
+    /// 用当前状态覆盖预设（改分辨率/亮度后想更新原预设时用）。
+    @discardableResult
+    func updatePresetWithCurrent(_ preset: Preset) -> Bool {
+        guard let snapshot = targetSnapshot(for: preset) else {
+            status = StatusMessage(text: "找不到预设绑定的显示器（可能未连接）", kind: .error)
+            return false
+        }
+        let level = brightness.level(for: snapshot)
+        let updated = PresetLogic.updating(preset, mode: snapshot.currentMode, brightness: level)
+        guard let index = presets.firstIndex(where: { $0.id == preset.id }) else { return false }
+        presets[index] = updated
+        settings.setPresets(presets)
+        status = StatusMessage(text: "已用当前状态更新「\(preset.name)」", kind: .success)
+        return true
+    }
+
+    /// 更换预设绑定的显示器。
+    func rebind(_ preset: Preset, to snapshot: DisplaySnapshot?) {
+        guard let index = presets.firstIndex(where: { $0.id == preset.id }) else { return }
+        presets[index].displayUUID = snapshot?.identity.uuid
+        settings.setPresets(presets)
+    }
+
+    /// 指定 / 解除快捷键槽位（同一个槽位只能有一个预设）。
+    func setHotkeySlot(_ slot: Int?, for preset: Preset) {
+        presets = PresetLogic.assigning(slot: slot, to: preset.id, in: presets)
+        settings.setPresets(presets)
+    }
+
+    func movePreset(_ preset: Preset, by offset: Int) {
+        presets = PresetLogic.moving(id: preset.id, by: offset, in: presets)
+        settings.setPresets(presets)
+    }
+
+    /// 按快捷键槽位应用（⌥⌘1…3 走这里）。
+    func applyPreset(slot: Int) {
+        guard let preset = PresetLogic.preset(in: presets, forSlot: slot) else {
+            status = StatusMessage(text: "⌥⌘\(slot + 1) 还没绑定预设", kind: .info)
+            return
+        }
+        applyPreset(preset)
+    }
+
+    /// 面板底部展示用：按槽位排序。
+    var orderedPresets: [Preset] {
+        PresetLogic.displayOrder(presets)
     }
 
     func applyPreset(_ preset: Preset) {
-        for snapshot in displays {
-            if let uuid = preset.displayUUID, uuid != snapshot.identity.uuid { continue }
+        let targets = displays.filter { snapshot in
+            guard let uuid = preset.displayUUID else { return true }
+            return uuid == snapshot.identity.uuid
+        }
+        guard !targets.isEmpty else {
+            status = StatusMessage(text: "「\(preset.name)」绑定的显示器当前未连接", kind: .error)
+            return
+        }
+        for snapshot in targets {
             if let width = preset.backingWidth, let height = preset.backingHeight {
-                let choices = snapshot.scalingChoices(hidpiOnly: hidpiOnlyChoices)
-                if let mode = choices.first(where: { $0.backingWidth == width && $0.backingHeight == height }) {
-                    manager.setMode(mode, on: snapshot.displayID)
-                }
+                // 先用「全部档位」找，找不到再用当前的过滤条件找，避免因为 HiDPI 过滤而失效。
+                let all = snapshot.scalingChoices(hidpiOnly: false, aspectTolerant: false)
+                let filtered = snapshot.scalingChoices(hidpiOnly: hidpiOnlyChoices)
+                let mode = all.first { $0.backingWidth == width && $0.backingHeight == height }
+                    ?? filtered.first { $0.backingWidth == width && $0.backingHeight == height }
+                if let mode { manager.setMode(mode, on: snapshot.displayID) }
             }
             if let level = preset.brightness {
                 brightness.setLevel(level, for: snapshot)
@@ -384,6 +467,19 @@ final class AppModel {
         }
         refreshDisplays()
         status = StatusMessage(text: "已应用预设 \(preset.name)", kind: .success)
+    }
+
+    /// 预设要作用的显示器快照（用于「更新为当前」）。
+    private func targetSnapshot(for preset: Preset) -> DisplaySnapshot? {
+        if let uuid = preset.displayUUID {
+            return displays.first { $0.identity.uuid == uuid }
+        }
+        return displays.first(where: \.isMain) ?? displays.first
+    }
+
+    /// 在设置里管理预设时用来创建新预设：默认取主屏。
+    var primarySnapshot: DisplaySnapshot? {
+        displays.first(where: \.isMain) ?? displays.first
     }
 
     // MARK: - 权限 / 开机自启

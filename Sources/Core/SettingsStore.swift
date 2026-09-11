@@ -39,6 +39,8 @@ final class SettingsStore {
         static let hasLaunched = "hasLaunchedBefore"
         static let hidpiOnly = "hidpiOnlyChoices"
         static let limits = "brightnessLimits"
+        static let brightnessCurve = "brightnessCurve"
+        static let smoothTransitions = "smoothBrightnessTransitions"
     }
 
     private init() {}
@@ -172,5 +174,19 @@ final class SettingsStore {
               let map = try? JSONDecoder().decode([String: BrightnessLimits].self, from: data)
         else { return [:] }
         return map
+    }
+
+    // MARK: - 亮度曲线 / 过渡
+
+    /// 亮度响应曲线（默认「柔和」，比原来的感知曲线在高端更细腻）。
+    var curve: BrightnessCurve {
+        get { BrightnessCurve(rawValue: defaults.string(forKey: Key.brightnessCurve) ?? "") ?? .gentle }
+        set { defaults.set(newValue.rawValue, forKey: Key.brightnessCurve) }
+    }
+
+    /// 亮度变化是否做 0.2 秒缓动（默认开）。
+    var smoothBrightnessTransitions: Bool {
+        get { defaults.object(forKey: Key.smoothTransitions) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.smoothTransitions) }
     }
 }
