@@ -75,7 +75,7 @@ final class BrightnessController {
         case .hardware:
             writeHardware(output, for: snapshot)
         case .software:
-            SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
+            setSoftwareLevel(output, for: snapshot)
         }
 
         if showOSD, settings.osdEnabled {
@@ -118,7 +118,7 @@ final class BrightnessController {
             // 软件调光在屏幕参数变化后需要重放。
             if backend(for: snapshot) == .software, let level = levels[uuid] {
                 let output = limits(for: snapshot).output(for: level)
-                SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
+                setSoftwareLevel(output, for: snapshot)
             }
         }
         let alive = Set(snapshots.map(\.identity.uuid))
@@ -186,7 +186,7 @@ final class BrightnessController {
                     self.log.notice("DDC write failed on \(uuid, privacy: .public); falling back to software for this session")
                     self.backends[uuid] = .software
                     let output = self.limits(for: snapshot).output(for: level)
-                    SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
+                    self.setSoftwareLevel(output, for: snapshot)
                 }
             }
         }
@@ -199,5 +199,20 @@ final class BrightnessController {
             return limits(for: snapshot).sliderValue(for: Double(reading.current) / Double(reading.max))
         }
         return 1.0
+    }
+
+    /// 软件调光落地：无线/虚拟屏（没有 EDID 的）走覆盖层，
+    /// 普通屏走伽马表 —— 隔空播放的伽马写入是「成功但无效」。
+    private func setSoftwareLevel(_ output: Double, for snapshot: DisplaySnapshot) {
+        SoftwareBrightness.shared.set(
+            SoftwareBrightness.perceptualFactor(for: output),
+            on: snapshot.displayID,
+            preferOverlay: snapshot.prefersOverlayDimming
+        )
+    }
+
+    /// 这块屏的软件调光走的是哪种机制（给界面显示用）。
+    func softwareStrategy(for snapshot: DisplaySnapshot) -> SoftwareBrightness.Strategy {
+        snapshot.prefersOverlayDimming ? .overlay : .gamma
     }
 }

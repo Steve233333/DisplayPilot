@@ -203,6 +203,11 @@ final class AppModel {
         backends[snapshot.identity.uuid] ?? brightness.backend(for: snapshot)
     }
 
+    /// 软件调光机制：无线屏是覆盖层，普通屏是伽马表。
+    func softwareStrategyTitle(for snapshot: DisplaySnapshot) -> String {
+        brightness.softwareStrategy(for: snapshot) == .overlay ? "软件调光 · 覆盖层" : "软件调光"
+    }
+
     func policy(for snapshot: DisplaySnapshot) -> BrightnessPolicy {
         brightness.policy(for: snapshot)
     }

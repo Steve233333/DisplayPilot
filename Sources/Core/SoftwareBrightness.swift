@@ -8,6 +8,14 @@ import os
 final class SoftwareBrightness {
     static let shared = SoftwareBrightness()
 
+    /// 软件调光的两种实现。
+    enum Strategy: String {
+        /// 伽马表：不额外开窗，适合普通外接屏 / 内置屏。
+        case gamma
+        /// 覆盖层：往屏幕上盖半透明黑窗，隔空播放 / 虚拟屏只有这个有效。
+        case overlay
+    }
+
     /// 伽马表 API 运行时解析：万一将来 macOS 删掉这个符号（BetterDisplay 2.2.6
     /// 就是这么被系统更新干掉的），App 依然能启动，只是软件调光不可用。
     private typealias SetTableFn = @convention(c) (
@@ -28,6 +36,7 @@ final class SoftwareBrightness {
 
     private let log = Logger(subsystem: "com.steve233.DisplayPilot", category: "software-brightness")
     private var factors: [CGDirectDisplayID: Double] = [:]
+    private var strategies: [CGDirectDisplayID: Strategy] = [:]
     private let lock = NSLock()
     private var observersInstalled = false
 
@@ -50,31 +59,61 @@ final class SoftwareBrightness {
     }
 
     func set(_ factor: Double, on displayID: CGDirectDisplayID) {
+        set(factor, on: displayID, preferOverlay: false)
+    }
+
+    /// preferOverlay = true 时走覆盖层（无线/虚拟屏必须用它）。
+    func set(_ factor: Double, on displayID: CGDirectDisplayID, preferOverlay: Bool) {
         let clamped = min(max(factor, 0.05), 1.0)
         lock.lock()
         factors[displayID] = clamped
+        strategies[displayID] = preferOverlay ? .overlay : .gamma
         lock.unlock()
-        apply(clamped, to: displayID)
+
+        if preferOverlay {
+            OverlayDimming.shared.set(clamped, on: displayID)
+        } else {
+            // 从覆盖层切回伽马时，先把旧的覆盖层撤掉。
+            OverlayDimming.shared.remove(displayID)
+            apply(clamped, to: displayID)
+        }
+    }
+
+    func strategy(for displayID: CGDirectDisplayID) -> Strategy {
+        lock.lock(); defer { lock.unlock() }
+        return strategies[displayID] ?? .gamma
     }
 
     func forget(displayID: CGDirectDisplayID) {
-        lock.lock(); factors.removeValue(forKey: displayID); lock.unlock()
+        lock.lock()
+        factors.removeValue(forKey: displayID)
+        strategies.removeValue(forKey: displayID)
+        lock.unlock()
+        OverlayDimming.shared.remove(displayID)
     }
 
     /// 唤醒、改分辨率、换色彩描述文件之后重放一次（伽马状态会被系统重置）。
     func reapplyAll() {
         lock.lock()
         let snapshot = factors
+        let modes = strategies
         lock.unlock()
         for (displayID, factor) in snapshot where factor < 0.999 {
-            apply(factor, to: displayID)
+            if modes[displayID] == .overlay {
+                OverlayDimming.shared.set(factor, on: displayID)
+            } else {
+                apply(factor, to: displayID)
+            }
         }
+        OverlayDimming.shared.relayout()
     }
 
     func restoreAll() {
         lock.lock()
         factors.removeAll()
+        strategies.removeAll()
         lock.unlock()
+        OverlayDimming.shared.removeAll()
         for displayID in DisplayManager.shared.onlineDisplayIDs() {
             apply(1.0, to: displayID)
         }

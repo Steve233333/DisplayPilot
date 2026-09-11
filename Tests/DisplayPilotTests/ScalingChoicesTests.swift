@@ -77,6 +77,12 @@ final class ScalingChoicesTests: XCTestCase {
         )
         XCTAssertEqual(snapshot.nativeResolution.width, 3048)
         XCTAssertEqual(snapshot.nativeResolution.height, 2032)
+        XCTAssertTrue(snapshot.prefersOverlayDimming, "没有 EDID 的无线/虚拟屏应该走覆盖层调光")
+    }
+
+    func testWiredDisplayUsesGammaDimming() {
+        let snapshot = makeSnapshot(edidNative: CGSize(width: 1920, height: 1200))
+        XCTAssertFalse(snapshot.prefersOverlayDimming, "有 EDID 的普通外接屏用伽马表更干净")
     }
 
     func testPerceptualBrightnessCurveMatchesSlider() {

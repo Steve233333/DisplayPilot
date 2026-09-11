@@ -16,6 +16,10 @@ struct DisplaySnapshot: Identifiable, Hashable {
 
     var hiDPIModes: [ScaledMode] { availableModes.filter(\.isHiDPI) }
 
+    /// 无线 / 虚拟屏（隔空播放、无线拓展这类）没有 EDID，
+    /// 它们的画面是编码后送出去的，伽马表写了不生效，必须用覆盖层压暗。
+    var prefersOverlayDimming: Bool { edidNative == nil }
+
     /// 面板真实像素（生成 override 与判断等比例都用它）：
     /// 优先用 EDID 里的原生时序；虚拟/隔空播放显示器没有 EDID 时用当前模式的 backing，
     /// 但只在它没被超采样放大过（< 1.5×）时才信。

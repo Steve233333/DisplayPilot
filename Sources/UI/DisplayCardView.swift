@@ -152,7 +152,9 @@ struct DisplayCardView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Badge(
-                        text: model.backend(for: snapshot).titleZH,
+                        text: model.backend(for: snapshot) == .hardware
+                            ? model.backend(for: snapshot).titleZH
+                            : model.softwareStrategyTitle(for: snapshot),
                         tint: model.backend(for: snapshot) == .hardware ? .green : .orange
                     )
                 }
