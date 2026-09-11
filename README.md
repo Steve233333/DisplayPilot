@@ -50,9 +50,13 @@ xattr -dr com.apple.quarantine /Applications/DisplayPilot.app
 
 | 菜单栏面板 | 设置 · 显示 |
 |---|---|
-| <img src="docs/panel.png" width="330" alt="菜单栏面板：每块屏的分辨率档位与亮度"> | <img src="docs/settings.png" width="440" alt="设置：每块屏的亮度后端策略"> |
+| <img src="docs/panel.png" width="330" alt="菜单栏面板：每块屏的分辨率档位与亮度"> | <img src="docs/settings-displays.png" width="440" alt="设置：每块屏的亮度后端策略"> |
 
 面板里每块显示器一张卡片：分辨率滑杆（默认只列 HiDPI + 与面板等比例的档位）、亮度滑杆（旁边是 0%～100% 的可用区间）、亮度后端徽标（硬件 DDC / 软件调光 / 软件调光·覆盖层）、平滑缩放状态与一键还原。
+
+| 通用 | 快捷键 | 权限 |
+|---|---|---|
+| <img src="docs/settings-general.png" width="290" alt="通用：开机自启、OSD、档位密度"> | <img src="docs/settings-shortcuts.png" width="290" alt="快捷键：F1/F2 接管与自定快捷键"> | <img src="docs/settings-permissions.png" width="290" alt="权限：辅助功能状态与说明"> |
 
 ## 功能
 
