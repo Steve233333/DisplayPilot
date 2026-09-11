@@ -43,6 +43,16 @@ final class BrightnessController {
         settings.policy(for: snapshot.identity.uuid)
     }
 
+    func limits(for snapshot: DisplaySnapshot) -> BrightnessLimits {
+        settings.limits(for: snapshot.identity.uuid)
+    }
+
+    func setLimits(_ limits: BrightnessLimits, for snapshot: DisplaySnapshot) {
+        settings.setLimits(limits, for: snapshot.identity.uuid)
+        // 区间变了要按当前滑杆位置重新落一次实际亮度。
+        setLevel(level(for: snapshot), for: snapshot, showOSD: false)
+    }
+
     func setPolicy(_ policy: BrightnessPolicy, for snapshot: DisplaySnapshot) {
         settings.setPolicy(policy, for: snapshot.identity.uuid)
         backends.removeValue(forKey: snapshot.identity.uuid)
@@ -60,11 +70,12 @@ final class BrightnessController {
         levels[uuid] = clamped
         settings.setLevel(clamped, for: uuid)
 
+        let output = limits(for: snapshot).output(for: clamped)
         switch backend(for: snapshot) {
         case .hardware:
-            writeHardware(clamped, for: snapshot)
+            writeHardware(output, for: snapshot)
         case .software:
-            SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: clamped), on: snapshot.displayID)
+            SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
         }
 
         if showOSD, settings.osdEnabled {
@@ -106,7 +117,8 @@ final class BrightnessController {
             }
             // 软件调光在屏幕参数变化后需要重放。
             if backend(for: snapshot) == .software, let level = levels[uuid] {
-                SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: level), on: snapshot.displayID)
+                let output = limits(for: snapshot).output(for: level)
+                SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
             }
         }
         let alive = Set(snapshots.map(\.identity.uuid))
@@ -146,7 +158,7 @@ final class BrightnessController {
             if let reading = DDCBrightness.shared.read(displayID: snapshot.displayID) {
                 ddcMax[uuid] = reading.max
                 // 首次探测到硬件亮度时，把当前值同步进来（只读这一次）。
-                levels[uuid] = Double(reading.current) / Double(reading.max)
+                levels[uuid] = limits(for: snapshot).sliderValue(for: Double(reading.current) / Double(reading.max))
                 return .hardware
             }
             log.notice("display \(uuid, privacy: .public): DDC unavailable, using software dimming")
@@ -173,7 +185,8 @@ final class BrightnessController {
                 Task { @MainActor in
                     self.log.notice("DDC write failed on \(uuid, privacy: .public); falling back to software for this session")
                     self.backends[uuid] = .software
-                    SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: level), on: snapshot.displayID)
+                    let output = self.limits(for: snapshot).output(for: level)
+                    SoftwareBrightness.shared.set(SoftwareBrightness.perceptualFactor(for: output), on: snapshot.displayID)
                 }
             }
         }
@@ -183,7 +196,7 @@ final class BrightnessController {
         if policy(for: snapshot) == .software { return 1.0 }
         if let reading = DDCBrightness.shared.read(displayID: snapshot.displayID), reading.max > 0 {
             ddcMax[snapshot.identity.uuid] = reading.max
-            return Double(reading.current) / Double(reading.max)
+            return limits(for: snapshot).sliderValue(for: Double(reading.current) / Double(reading.max))
         }
         return 1.0
     }

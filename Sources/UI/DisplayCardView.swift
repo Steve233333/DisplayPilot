@@ -9,6 +9,7 @@ struct DisplayCardView: View {
     @State private var dragIndex: Double?
     @State private var presetName = ""
     @State private var showingPresetField = false
+    @State private var showingRange = false
 
     private var choices: [ScaledMode] {
         snapshot.scalingChoices(hidpiOnly: model.hidpiOnlyChoices)
@@ -126,8 +127,19 @@ struct DisplayCardView: View {
                 Text(L10n.t("亮度"))
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
+                Button {
+                    showingRange.toggle()
+                } label: {
+                    OcticonImage(name: "sliders", size: 11)
+                }
+                .buttonStyle(.plain)
+                .help("设定最低/最高亮度：滑杆的 0% 和 100% 会落在这个区间里")
+                .popover(isPresented: $showingRange, arrowEdge: .bottom) {
+                    rangeEditor
+                }
                 Text("\(Int((model.level(for: snapshot) * 100).rounded()))%")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                 Menu {
                     Picker(L10n.t("亮度后端"), selection: Binding(
                         get: { model.policy(for: snapshot) },
@@ -158,6 +170,12 @@ struct DisplayCardView: View {
             )
             .controlSize(.small)
 
+            if !model.limits(for: snapshot).isDefault {
+                Text("滑杆区间：0% → \(Int((model.limits(for: snapshot).minimum * 100).rounded()))% ，100% → \(Int((model.limits(for: snapshot).maximum * 100).rounded()))%")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
+
             if model.policy(for: snapshot) == .hardware {
                 Text(L10n.t("DCR 模式下硬件调光可能闪烁"))
                     .font(.system(size: 9))
@@ -166,22 +184,72 @@ struct DisplayCardView: View {
         }
     }
 
+    /// 最低/最高亮度设定器。
+    private var rangeEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("亮度区间")
+                .font(.system(size: 12, weight: .semibold))
+            Text("滑杆上的 0%～100% 只会落在这段区间里，用来避开显示器最暗/最亮时不舒服的两端。")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("最低").font(.system(size: 11))
+                    Spacer()
+                    Text("\(Int((model.limits(for: snapshot).minimum * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                Slider(value: Binding(
+                    get: { model.limits(for: snapshot).minimum },
+                    set: { newValue in
+                        var limits = model.limits(for: snapshot)
+                        limits.minimum = min(newValue, limits.maximum - 0.02)
+                        model.setLimits(limits, for: snapshot)
+                    }
+                ), in: 0...1)
+                .controlSize(.small)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("最高").font(.system(size: 11))
+                    Spacer()
+                    Text("\(Int((model.limits(for: snapshot).maximum * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                Slider(value: Binding(
+                    get: { model.limits(for: snapshot).maximum },
+                    set: { newValue in
+                        var limits = model.limits(for: snapshot)
+                        limits.maximum = max(newValue, limits.minimum + 0.02)
+                        model.setLimits(limits, for: snapshot)
+                    }
+                ), in: 0...1)
+                .controlSize(.small)
+            }
+
+            HStack {
+                Button("重置为 0%–100%") {
+                    model.setLimits(BrightnessLimits(), for: snapshot)
+                }
+                .controlSize(.small)
+                Spacer()
+                Button("完成") { showingRange = false }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .frame(width: 280)
+    }
+
     // MARK: - 操作
 
     private var actions: some View {
         HStack(spacing: 6) {
-            Button {
-                model.installScalingLadder(for: snapshot)
-            } label: {
-                Label(L10n.t("启用平滑缩放"), systemImage: "wand.and.stars")
-                    .font(.system(size: 10))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.mini)
-            .disabled(model.isBusy || snapshot.identity.isBuiltin)
-            .help(snapshot.identity.isBuiltin
-                  ? "内置屏幕不支持自定义缩放档位"
-                  : "写入 61 档等比例 HiDPI 档位（需要一次管理员密码）")
+            scalingButton
 
             Button {
                 model.reprobe(snapshot)
@@ -212,6 +280,44 @@ struct DisplayCardView: View {
             .buttonStyle(.bordered)
             .controlSize(.mini)
             .help(L10n.t("保存当前为预设"))
+        }
+    }
+
+    /// 「启用平滑缩放」按钮：按当前状态显示不同文案，并把原因说清楚。
+    @ViewBuilder
+    private var scalingButton: some View {
+        switch model.scalingStatus(for: snapshot) {
+        case .installed:
+            Button {
+                model.reprobe(snapshot)
+            } label: {
+                Label("平滑缩放已启用", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .help("61 档等比例缩放已经在系统里了（所以点它不会看到变化）。点一下只会让系统重新识别一次档位。")
+        case .missing:
+            Button {
+                model.installScalingLadder(for: snapshot)
+            } label: {
+                Label(L10n.t("启用平滑缩放"), systemImage: "wand.and.stars")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.mini)
+            .disabled(model.isBusy)
+            .help("往系统里写入 61 档等比例 HiDPI 档位（原生 → 50%，每 16 点一档），写完立刻生效，需要一次管理员密码。")
+        case .unsupported(let reason):
+            Button {
+            } label: {
+                Label("不支持平滑缩放", systemImage: "slash.circle")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .disabled(true)
+            .help(reason)
         }
     }
 

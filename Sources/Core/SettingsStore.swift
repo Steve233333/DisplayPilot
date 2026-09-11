@@ -1,5 +1,27 @@
 import Foundation
 
+/// 每块屏的亮度可用区间：滑杆上的 0%～100% 映射到 [minimum, maximum]。
+struct BrightnessLimits: Codable, Hashable, Sendable {
+    var minimum: Double = 0
+    var maximum: Double = 1
+
+    var isDefault: Bool { abs(minimum) < 0.001 && abs(maximum - 1) < 0.001 }
+    var rangeText: String { "\(Int((minimum * 100).rounded()))% – \(Int((maximum * 100).rounded()))%" }
+
+    static func clamp(_ value: Double) -> Double { Swift.min(Swift.max(value, 0), 1) }
+
+    /// 滑杆值（0…1）→ 实际输出亮度。
+    func output(for slider: Double) -> Double {
+        minimum + Self.clamp(slider) * (maximum - minimum)
+    }
+
+    /// 实际输出亮度 → 滑杆值（用来把显示器的真实亮度映射回滑杆位置）。
+    func sliderValue(for output: Double) -> Double {
+        guard maximum - minimum > 0.0001 else { return 0 }
+        return Self.clamp((output - minimum) / (maximum - minimum))
+    }
+}
+
 /// 所有持久化状态（UserDefaults）：每屏亮度、每屏策略、预设、开关。
 final class SettingsStore {
     static let shared = SettingsStore()
@@ -16,6 +38,7 @@ final class SettingsStore {
         static let seeded = "didSeedKnownDisplays"
         static let hasLaunched = "hasLaunchedBefore"
         static let hidpiOnly = "hidpiOnlyChoices"
+        static let limits = "brightnessLimits"
     }
 
     private init() {}
@@ -128,5 +151,26 @@ final class SettingsStore {
     var hidpiOnlyChoices: Bool {
         get { defaults.object(forKey: Key.hidpiOnly) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.hidpiOnly) }
+    }
+
+    // MARK: - 亮度区间
+
+    func limits(for uuid: String) -> BrightnessLimits {
+        allLimits()[uuid] ?? BrightnessLimits()
+    }
+
+    func setLimits(_ limits: BrightnessLimits, for uuid: String) {
+        var map = allLimits()
+        map[uuid] = limits
+        if let data = try? JSONEncoder().encode(map) {
+            defaults.set(data, forKey: Key.limits)
+        }
+    }
+
+    func allLimits() -> [String: BrightnessLimits] {
+        guard let data = defaults.data(forKey: Key.limits),
+              let map = try? JSONDecoder().decode([String: BrightnessLimits].self, from: data)
+        else { return [:] }
+        return map
     }
 }

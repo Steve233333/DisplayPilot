@@ -11,6 +11,13 @@ struct StatusMessage: Identifiable, Equatable {
     var kind: Kind
 }
 
+/// 这块屏的平滑缩放档位状态。
+enum ScalingStatus: Equatable {
+    case installed
+    case missing
+    case unsupported(String)
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -22,6 +29,13 @@ final class AppModel {
     var isBusy = false
     var hasAccessibilityPermission = MediaKeyTap.hasAccessibilityPermission
     var launchAtLogin = LaunchAtLogin.isEnabled
+    /// 可观察的镜像状态：SwiftUI 只能观察 AppModel 自己的属性，
+    /// 引擎里的字典（BrightnessController）改了它不知道 —— 之前滑块和数字
+    /// 对不上就是这个原因。
+    var levels: [String: Double] = [:]
+    var backends: [String: BrightnessBackend] = [:]
+    var limits: [String: BrightnessLimits] = [:]
+    var scalingStatuses: [String: ScalingStatus] = [:]
 
     var mediaKeysEnabled: Bool
     var osdEnabled: Bool
@@ -110,6 +124,30 @@ final class AppModel {
         displays = manager.snapshots()
         brightness.refresh(displays)
         hasAccessibilityPermission = MediaKeyTap.hasAccessibilityPermission
+        syncMirrors()
+    }
+
+    /// 把引擎里的状态同步到可观察属性。
+    private func syncMirrors() {
+        for snapshot in displays {
+            let uuid = snapshot.identity.uuid
+            levels[uuid] = brightness.level(for: snapshot)
+            backends[uuid] = brightness.backend(for: snapshot)
+            limits[uuid] = brightness.limits(for: snapshot)
+            scalingStatuses[uuid] = computeScalingStatus(for: snapshot)
+        }
+    }
+
+    private func computeScalingStatus(for snapshot: DisplaySnapshot) -> ScalingStatus {
+        if snapshot.identity.isBuiltin {
+            return .unsupported("内置屏幕不支持自定义缩放档位（macOS 会忽略它的 override）")
+        }
+        if snapshot.identity.vendorID == 0 || snapshot.identity.productID == 0 {
+            return .unsupported("这块显示器没有报 vendor/product，写不了 override")
+        }
+        let native = manager.panelNativeResolution(for: snapshot.displayID)
+        let expected = OverrideFile.generate(identity: snapshot.identity, native: native, density: ladderDensity)
+        return expected.matches() ? .installed : .missing
     }
 
     private func applyMediaKeyState() {
@@ -147,11 +185,11 @@ final class AppModel {
     // MARK: - 亮度
 
     func level(for snapshot: DisplaySnapshot) -> Double {
-        brightness.level(for: snapshot)
+        levels[snapshot.identity.uuid] ?? brightness.level(for: snapshot)
     }
 
     func backend(for snapshot: DisplaySnapshot) -> BrightnessBackend {
-        brightness.backend(for: snapshot)
+        backends[snapshot.identity.uuid] ?? brightness.backend(for: snapshot)
     }
 
     func policy(for snapshot: DisplaySnapshot) -> BrightnessPolicy {
@@ -164,6 +202,26 @@ final class AppModel {
 
     func setLevel(_ level: Double, for snapshot: DisplaySnapshot) {
         brightness.setLevel(level, for: snapshot)
+        levels[snapshot.identity.uuid] = min(max(level, 0), 1)
+        backends[snapshot.identity.uuid] = brightness.backend(for: snapshot)
+    }
+
+    func limits(for snapshot: DisplaySnapshot) -> BrightnessLimits {
+        limits[snapshot.identity.uuid] ?? brightness.limits(for: snapshot)
+    }
+
+    func setLimits(_ newLimits: BrightnessLimits, for snapshot: DisplaySnapshot) {
+        let normalized = BrightnessLimits(
+            minimum: min(max(newLimits.minimum, 0), 0.98),
+            maximum: min(max(newLimits.maximum, newLimits.minimum + 0.02), 1)
+        )
+        brightness.setLimits(normalized, for: snapshot)
+        limits[snapshot.identity.uuid] = normalized
+        levels[snapshot.identity.uuid] = brightness.level(for: snapshot)
+    }
+
+    func scalingStatus(for snapshot: DisplaySnapshot) -> ScalingStatus {
+        scalingStatuses[snapshot.identity.uuid] ?? computeScalingStatus(for: snapshot)
     }
 
     func nudgeBrightness(_ delta: Double) {
